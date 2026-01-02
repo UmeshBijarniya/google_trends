@@ -1,0 +1,13 @@
+serpapi
+mysql-connector-python
+fastapi
+google_api_python_client
+gspread
+html2text
+mysql-connector-python
+numpy
+oauth2client
+protobuf
+python-dotenv
+Requests
+tqdm
