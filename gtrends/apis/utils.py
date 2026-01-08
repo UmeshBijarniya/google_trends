@@ -95,6 +95,7 @@ class SerpApiKeyManager:
 
         If another thread already rotated the key,
         this call becomes a NO-OP to avoid skipping keys.
+        this call becomes a NO-OP to avoid skipping keys.
         """
         with self._key_lock:
             current_active_key = self._keys[self._current_index]
