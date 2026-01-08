@@ -6,6 +6,25 @@ class GoogleTrendsRepository:
     def __init__(self):
         self.db = DataBaseConnector("office_crm")
     
+    def get_past_data(self, search_id) -> List[Dict]:
+        """
+        Fetch google trends data corresponding to a search id
+        """
+        query = """
+        SELECT id, timestamp, value FROM `google_trends_iot` 
+        WHERE 
+        `search_id` = %s
+        ORDER BY `google_trends_iot`.`timestamp` ASC
+        """
+        trends_data = []
+        try:
+            self.db.connect()
+            trends_data = self.db.execute(query, (search_id,), fetch_all=True)
+        finally:
+            self.db.close()
+
+        return trends_data
+    
     def searches_to_update(self) -> List[Dict]:
         """
         Fetch exams having usable Google Trends keywords

@@ -53,11 +53,11 @@ class SerpApiTrendsFetcher:
         rows = []
 
         for entry in timeline:
-            dt = datetime.fromtimestamp(int(entry["timestamp"]))
+            dt = int(entry["timestamp"])
             value = entry["values"][0].get("extracted_value", 0)
 
             rows.append({
-                "date": dt.strftime("%d-%m-%Y"),
+                "timestamp": dt,
                 "value": value
             })
 
@@ -103,20 +103,6 @@ class SerpApiTrendsFetcher:
     def _safe_name(self, name: str):
         return "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in name).strip("_")
 
-    def _generate_chunks(self, start_date, end_date, window_days):
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-
-        chunks = []
-        cur = start
-        while cur <= end:
-            nxt = min(cur + timedelta(days=window_days - 1), end)
-            chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
-            cur += timedelta(days=window_days)
-
-        return chunks
-
-    
     def fetch_chunk(self, keyword, start, end, gprop="youtube"):
         timeframe = f"{start} {end}"
         params = self._build_params(keyword, timeframe, gprop)
