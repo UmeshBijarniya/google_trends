@@ -44,6 +44,16 @@ class GoogleTrendSyncer:
                 "value": round(row["value"] * scale, 2)
             })
         return normalized
+    
+    def normalise_past_data(self, past_rows):
+        """matching the format of existing data with fetched data"""
+        normalized = []
+        for row in past_rows:
+                normalized.append({
+                        "date":datetime.fromtimestamp(row["timestamp"]).strftime("%Y-%m-%d"),
+                        "value": row["value"]
+                })
+        return normalized
 
     def merge_timeseries(self, past, normalized_new):
         """Combines past data with normalized new data."""
