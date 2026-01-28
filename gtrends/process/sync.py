@@ -16,7 +16,7 @@ class GoogleTrendSyncer:
         self.gtr = GoogleTrendsRepository()
         self.db = self.gtr.db  # Access the DB connector from the repository
 
-    def _find_overlap(self, past, new):
+    def find_overlap(self, past, new):
         """Finds common dates between two datasets."""
         past_map = {p["date"]: p["value"] for p in past}
         overlap = []
@@ -75,16 +75,16 @@ class GoogleTrendSyncer:
             w_end = w_end - timedelta(days=window_days - overlap_days)
         return windows[::-1]
 
-    def upsert_timeseries(self, keyword, geo, data):
+    def upsert_timeseries(self, keyword, geo, data, search_id):
         """Inserts final stitched data into database."""
         # Ensure this table exists in your DB!
         query = """
-        INSERT INTO google_trends_timeseries (keyword, geo, date, value)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO google_trends_timeseries (search_id, keyword, geo, date, value)
+        VALUES (%s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE value = VALUES(value)
         """
         params = [
-            (keyword, geo, row["date"], row["value"]) 
+            (search_id, keyword, geo, row["date"], row["value"]) 
             for row in data
         ]
         self.db.execute_many(query, params)
