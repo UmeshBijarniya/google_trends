@@ -40,8 +40,13 @@ for data in search_list:
         gprop = data["search_platform"]
         geo = data["search_geo"]
 
+        # get all the past data of search_id
         past_raw = gtr.get_past_data(search_id)
-        past = syncer.normalise_past_data(past_raw) if past_raw else []
+        # matching the formate of existing data with the fetched data
+        if past_raw:
+            past = syncer.normalise_past_data(past_raw)
+        else :
+            past = []
 
         if past_raw:
             stitched = past
@@ -53,15 +58,15 @@ for data in search_list:
         end_dt = datetime.now()
 
         window_list = syncer.generate_windows(start_dt, end_dt, window_days, overlap_days)
-        print(f"Created {len(window_list)} time windows.")
+        print(f"Created {len(window_list)} total windows.")
 
-        for win_start, win_end in window_list:
-            print(f"fetching data from {win_start} to {win_end}")
+        for w_start, w_end in window_list:
+            print(f"fetching data from {w_start} to {w_end}")
             try:
-                chunk = fetcher.fetch_chunk(keyword, win_start, win_end, gprop=gprop)
+                chunk = fetcher.fetch_chunk(keyword, w_start, w_end, gprop=gprop)
 
                 if not chunk:
-                    print(f"empty chunk")
+                    print(f"empty chunk , nothing fetched!")
                     continue
                 if not stitched:
                     stitched = sorted(chunk, key=lambda x:x["timestamp"])
@@ -73,9 +78,9 @@ for data in search_list:
             print(f"finding overlap!")
             overlap = syncer.find_overlap(stitched, chunk)
             if overlap:
-                scale = syncer.compute_scaling_factor(overlap)
+                scale = syncer.compute_scaling_factor(overlap, stitched, chunk)
             else:
-                print(f"No overlap for {keyword} ({win_start}-{win_end}) | set scaling factor to 1")
+                print(f"No overlap for {keyword} ({w_start}-{w_end}) | using scaling factor 1")
                 scale = 1
 
             print(f"syncing with scaling factor: {scale}")
