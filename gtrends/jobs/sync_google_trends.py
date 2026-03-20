@@ -78,7 +78,7 @@ for data in search_list:
             print(f"finding overlap!")
             overlap = syncer.find_overlap(stitched, chunk)
             if overlap:
-                scale = syncer.compute_scaling_factor(overlap, stitched, chunk)
+                scale = syncer.compute_scaling_factor(overlap)
             else:
                 print(f"No overlap for {keyword} ({w_start}-{w_end}) | using scaling factor 1")
                 scale = 1

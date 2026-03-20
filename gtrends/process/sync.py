@@ -1,8 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import mean
 import csv
 
+
 # from gtrends.db.keywords import GoogleTrendsRepository
+
 
 class GoogleTrendSyncer:
     """
@@ -10,56 +12,66 @@ class GoogleTrendSyncer:
     """
     DATE_FMT = "%Y-%m-%d"  # Adjust if SerpApi returns different format
 
-    # def __init__(self):
-    #     self.gtr = GoogleTrendsRepository()
-    #     self.db = self.gtr.db  # Access the DB connector
-
-    # def find_overlap(self, past, new):
-    #     """Finds common dates between two datasets."""
-    #     past_map = {p["date"]: p["value"] for p in past}
-    #     overlap = []
-    #     for row in new:
-    #         if row["date"] in past_map:
-    #             overlap.append(
-    #                 (past_map[row["date"]], row["value"])
-    #             )
-    #     return overlap
-
     def find_overlap(self, past, new):
         """
-        past: last rows read from CSV (DictReader)
-        new: freshly fetched chunk
+        past: list[list[str]] -> e.g., [['date', 'value'], ['2023-01-01', '50'], ...]
+        new: list[dict] -> e.g., [{'timestamp': '1672531200', 'value': '75'}]
         """
 
-        # Build map from past using timestamp
-        past_map = {
-            int(p["timestamp"]): float(p["value"])
-            for p in past
-            if "timestamp" in p
-        }
+        # --- Build Map from Past (CSV List) ---
+        past_map = {}
+
+        for row in past:
+            # Safety check: Ensure row has at least 2 columns
+            if not row or len(row) < 2:
+                continue
+
+            # Skip header row (if it contains "date" or text)
+            if "date" in row[0].lower():
+                continue
+
+            try:
+                # Store: "2023-01-01" -> 50.0
+                past_map[row[0]] = float(row[1])
+            except ValueError:
+                continue  # Skip header or malformed lines
 
         overlap = []
+        for item in new:
+            # API items are Dicts, so we use keys
+            if "timestamp" not in item:
+                continue
 
-        for row in new:
-            ts = int(row["timestamp"])
+            try:
+                # Convert API Timestamp -> Date String to match CSV
+                ts = int(item["timestamp"])
+                date_key = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
-            if ts in past_map:
-                overlap.append(
-                    (past_map[ts], row["value"])
-                )
+                # CHECK OVERLAP
+                if date_key in past_map:
+                    overlap.append((past_map[date_key], float(item["value"])))
+
+            except (ValueError, TypeError):
+                continue
 
         return overlap
 
-
     def compute_scaling_factor(self, overlap):
         """Calculates ratio: mean(past_values) / mean(new_values)."""
-        if len(overlap) < 1: return 1.0
-        
+        if len(overlap) < 1:
+            return 1.0
+
         past_vals = [p for p, _ in overlap]
         new_vals = [n for _, n in overlap]
-        
-        if mean(new_vals) == 0: return 1.0
-        return mean(past_vals) / mean(new_vals)
+
+        avg_past = mean(past_vals)
+        avg_new = mean(new_vals)
+
+        # --- SAFETY CHECK ---
+        if avg_new == 0:
+            return 1.0
+
+        return avg_past / avg_new
 
     def normalize_new_data(self, new_data, scale):
         """Applies scaling factor to new data chunk."""
@@ -68,7 +80,7 @@ class GoogleTrendSyncer:
 
         for row in new_data:
             # --- normalize date---
-            if"timestamp" in row:
+            if "timestamp" in row:
                 date_obj = datetime.fromtimestamp(int(row["timestamp"]))
             elif isinstance(row.get("date"), datetime):
                 date_obj = row["date"]
@@ -77,36 +89,32 @@ class GoogleTrendSyncer:
             else:
                 raise ValueError(f"Unsupported date format: {row}")
 
-            normalized.append({
-                "date": date_obj.strftime(date_fmt),
-                "value": round(row["value"] * scale, 2)
-            })
-                
-        return normalized
+            scaled_value = row["value"] * scale
 
+            # 2. Apply your specific condition
+            if scaled_value > 100:
+                scaled_value = 100  # Cap it at 100
+
+            # 3. Append to the list
+            normalized.append(
+                {"date": date_obj.strftime(date_fmt), "value": round(scaled_value, 2)}
+            )
+
+        return normalized
 
     def normalise_past_data(self, past_rows):
         """matching the format of existing data with fetched data"""
         # id, timestamp, value
         normalized = []
         for row in past_rows:
-                normalized.append({
-                        "id":row["id"],
-                        "date":datetime.fromtimestamp(row["timestamp"]).strftime("%Y-%m-%d"),
-                        "value": row["value"]
-                })
+            normalized.append(
+                {
+                    "id": row["id"],
+                    "date": datetime.fromtimestamp(row["timestamp"]).strftime("%Y-%m-%d"),
+                    "value": row["value"],
+                }
+            )
         return normalized
-
-    def merge_timeseries(self, past, normalised_new):
-        """Combines past data with normalized new data."""
-        merged = {str(row["date"]): row["value"] for row in past}
-
-        for row in normalised_new:
-            merged[str(row["date"])] = row["value"]
-        
-        return [{"date":d, "value": v} for d,v in sorted(merged.items())]
-
-
 
     def generate_windows(self, start_date, end_date, window_days=240, overlap_days=30):
         """
@@ -126,22 +134,18 @@ class GoogleTrendSyncer:
         windows = []
 
         while w_end > start_date:
-            w_start = max(
-                w_end - timedelta(days=window_days),
-                start_date
-            )
+            w_start = max(w_end - timedelta(days=window_days), start_date)
 
-            windows.append((
-                w_start.strftime(self.DATE_FMT),
-                w_end.strftime(self.DATE_FMT)
-            ))
+            windows.append(
+                (w_start.strftime(self.DATE_FMT), w_end.strftime(self.DATE_FMT))
+            )
 
             # move window backward with overlap
             w_end = w_end - timedelta(days=window_days - overlap_days)
 
         return windows[::-1]
-    
-    def get_last_date(self, csv_file, date_col="date", date_fmt="%Y-%m-%d",days = 30):
+
+    def get_last_date(self, csv_file, date_col="date", date_fmt="%Y-%m-%d", days=30):
 
         try:
             with open(csv_file, mode="r", newline="", encoding="utf-8") as f:
@@ -162,39 +166,3 @@ class GoogleTrendSyncer:
 
         except FileNotFoundError:
             return None
-
-
-
-
-    def upsert_timeseries(self,keyword:str, geo:str, data, search_id:int):
-        """
-        Upsert normalized Google Trends time-series into DB
-        """
-        query = """
-        INSERT INTO google_trends_iot (search_id, keyword, geo, timestamp, value)
-        VALUES (%s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE value = VALUES(value)
-        """
-        params = []
-        for row in data:
-            date = row["date"]
-
-            if isinstance(date, datetime):
-                timestamp = int(date.timestamp())
-            else:
-                timestamp = int(
-                    datetime.combine(date, datetime.min.time()).timestamp()
-                )
-            params.append((search_id,keyword,geo,timestamp,row["value"]))
-            
-        if params:
-            try:
-                self.db.execute_many(query,params)
-            except Exception as e:
-                print("ERROR SAVING THE DATA:",e)
-            finally:
-                self.db.close()
-
-    
-                
-            

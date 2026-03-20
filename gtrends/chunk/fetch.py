@@ -3,13 +3,15 @@ import random
 import time
 import serpapi
 
-from gtrends.apis.utils import SerpApiKeyManager
+# from gtrends.apis.utils import SerpApiKeyManager
 
 from datetime import datetime, timedelta
-from gtrends.apis.utils import MAX_RETRIES
+# from gtrends.apis.utils import MAX_RETRIES
 
 MAX_BACKOFF = 20
 BASE_DELAY = (1, 3)
+
+MAX_RETRIES = 3
 
 class SerpApiTrendsFetcher:
     """
@@ -17,13 +19,15 @@ class SerpApiTrendsFetcher:
     with retry logic, key rotation, and rate-limit handling.
     """
 
-    def __init__(self, geo="IN", tz="330"):
+    def __init__(self, api_key, geo="IN", tz="330"):
         self.geo = geo
         self.tz = tz
-        self.key_manager = SerpApiKeyManager()
+        self.api_key = api_key
+        # self.key_manager = SerpApiKeyManager()
 
-    def initialize(self):
-        self.key_manager.initialize()
+
+    # def initialize(self):
+    #     self.key_manager.initialize()
     
     def _build_params(self, keyword, timeframe, gprop = 'youtube'):
         return {
@@ -111,32 +115,43 @@ class SerpApiTrendsFetcher:
         key_rotations = 0
 
         while retries < MAX_RETRIES:
-            api_key = self.key_manager.get_current_key()
-            params["api_key"] = api_key
+            # api_key = self.key_manager.get_current_key()
+            # params["api_key"] = api_key
+            params["api_key"] = self.api_key
 
             try:
                 results = serpapi.search(params)
                 self._validate_response(results)
 
                 timeline = self._extract_timeline(results)
-                self.key_manager.mark_key_used(api_key)
+                # self.key_manager.mark_key_used(api_key)
                 return self._process_timeline(timeline)
 
             except Exception as e:
-                error_type = self._classify_error(e)
+                # error_type = self._classify_error(e)
 
-                if error_type == "DEAD_KEY":
-                    self._handle_dead_key(api_key, e)
-                    key_rotations += 1
-                    if key_rotations > MAX_RETRIES:
-                        break
-                    continue
+                # if error_type == "DEAD_KEY":
+                #     self._handle_dead_key(api_key, e)
+                #     key_rotations += 1
+                #     if key_rotations > MAX_RETRIES:
+                #         break
+                #     continue
 
-                if error_type == "RATE_LIMIT":
-                    self._handle_rate_limit(api_key)
-                    continue
+                # if error_type == "RATE_LIMIT":
+                #     self._handle_rate_limit(api_key)
+                #     continue
 
-                self._handle_generic_error(e, retries, keyword)
+                # self._handle_generic_error(e, retries, keyword)
+                # retries += 1
+
+                print(f"⚠️ Error fetching [{keyword}] | attempt {retries + 1}/{MAX_RETRIES}")
+                print(f"   ↳ {type(e).__name__}: {e}")
+
+                delay = min(
+                    random.uniform(*BASE_DELAY) * (2 ** retries),
+                    MAX_BACKOFF
+                )
+                time.sleep(delay)
                 retries += 1
 
         return None
